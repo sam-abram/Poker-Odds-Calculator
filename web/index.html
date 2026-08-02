@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hold'em Odds</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <div class="brand"><span class="pip">&#9824;</span> Hold&rsquo;em Odds</div>
+      <div class="controls">
+        <div class="ctrl players-ctrl">
+          <span>Players</span>
+          <button id="dec" title="Remove player">&minus;</button>
+          <span id="pcount">2</span>
+          <button id="inc" title="Add player">+</button>
+        </div>
+        <label class="ctrl trials-ctrl">
+          <span>MC trials</span>
+          <input id="trials" type="number" value="100000" min="1000" step="10000">
+        </label>
+        <button id="newhand" class="btn">New Hand</button>
+      </div>
+    </header>
+
+    <div id="status" class="status">Add two cards to every player to see the odds.</div>
+
+    <main class="stage" id="stage">
+      <div class="felt"></div>
+      <div class="board-wrap">
+        <div class="board" id="board"></div>
+        <div class="street" id="street">preflop</div>
+      </div>
+      <div class="seats" id="seats"></div>
+    </main>
+
+    <footer id="compare" class="compare hidden"></footer>
+  </div>
+
+  <div id="picker" class="picker hidden"></div>
+  <div id="hover" class="hover hidden"></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

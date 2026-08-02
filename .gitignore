@@ -1,0 +1,10 @@
+# Build output
+/build/
+
+# MSVC / compiler artifacts
+*.exe
+*.obj
+*.pdb
+*.ilk
+*.exp
+*.lib
