@@ -22,6 +22,7 @@
           <input id="trials" type="number" value="100000" min="1000" step="10000">
         </label>
         <button id="newhand" class="btn">New Hand</button>
+        <button id="quizbtn" class="btn quiz-btn">Quiz</button>
       </div>
     </header>
 
@@ -41,6 +42,22 @@
 
   <div id="picker" class="picker hidden"></div>
   <div id="hover" class="hover hidden"></div>
+
+  <div id="quiz" class="quiz-overlay hidden">
+    <div class="quiz-panel">
+      <div class="quiz-header">
+        <div class="quiz-tabs">
+          <button class="quiz-tab active" data-mode="ahead">Who's Ahead?</button>
+          <button class="quiz-tab" data-mode="potodds">Should You Call?</button>
+        </div>
+        <div class="quiz-info">
+          <span class="quiz-score-label">Score: <b id="qscore">0 / 0</b></span>
+          <button id="qclose" class="quiz-close-btn">&times;</button>
+        </div>
+      </div>
+      <div id="qbody" class="quiz-body"></div>
+    </div>
+  </div>
 
   <script src="/app.js"></script>
 </body>

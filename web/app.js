@@ -338,6 +338,344 @@ function wire() {
   window.addEventListener("resize", render);
 }
 
+// ---- quiz mode -------------------------------------------------------------
+const quiz = {
+  active: false,
+  mode: "ahead",
+  correct: 0,
+  total: 0,
+  scenario: null,
+  answered: false,
+};
+
+function shuffledDeck() {
+  const deck = [];
+  for (const r of RANKS) for (const s of SUITS) deck.push(r + s);
+  for (let i = deck.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [deck[i], deck[j]] = [deck[j], deck[i]];
+  }
+  return deck;
+}
+
+function quizCard(card) {
+  const el = document.createElement("div");
+  el.className = "card";
+  if (!card) { el.classList.add("empty"); return el; }
+  const rank = card[0], suit = card[1];
+  el.classList.add("suit-" + suit);
+  const r = document.createElement("span");
+  r.className = "r";
+  r.textContent = rank === "T" ? "10" : rank;
+  const s = document.createElement("span");
+  s.className = "s";
+  s.textContent = SUIT_GLYPH[suit];
+  el.append(r, s);
+  return el;
+}
+
+function startQuiz() {
+  quiz.active = true;
+  quiz.correct = 0;
+  quiz.total = 0;
+  quiz.answered = false;
+  $("quiz").classList.remove("hidden");
+  updateQuizTabs();
+  renderQuizScore();
+  generateQuiz();
+}
+
+function closeQuiz() {
+  quiz.active = false;
+  $("quiz").classList.add("hidden");
+}
+
+function setQuizMode(mode) {
+  quiz.mode = mode;
+  quiz.correct = 0;
+  quiz.total = 0;
+  quiz.answered = false;
+  updateQuizTabs();
+  renderQuizScore();
+  generateQuiz();
+}
+
+function updateQuizTabs() {
+  document.querySelectorAll(".quiz-tab").forEach((t) => {
+    t.classList.toggle("active", t.dataset.mode === quiz.mode);
+  });
+}
+
+function renderQuizScore() {
+  $("qscore").textContent = quiz.correct + " / " + quiz.total;
+}
+
+async function generateQuiz() {
+  quiz.answered = false;
+  const body = $("qbody");
+  body.innerHTML = '<div class="quiz-loading">Dealing…</div>';
+
+  const deck = shuffledDeck();
+  let di = 0;
+
+  const nPlayers = quiz.mode === "ahead" ? 2 + Math.floor(Math.random() * 2) : 2;
+  const players = [];
+  for (let i = 0; i < nPlayers; i++) players.push([deck[di++], deck[di++]]);
+
+  const streets = [0, 3, 4, 5];
+  const nBoard = streets[Math.floor(Math.random() * streets.length)];
+  const board = [];
+  for (let i = 0; i < nBoard; i++) board.push(deck[di++]);
+
+  const q = new URLSearchParams();
+  q.set("players", players.map((p) => p.join("")).join(","));
+  if (board.length) q.set("board", board.join(""));
+  q.set("trials", "100000");
+
+  try {
+    const res = await fetch("/api/equity?" + q.toString());
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    const enumRes = data.results.find((r) => r.method === "enumeration");
+
+    let pot = 0, bet = 0;
+    if (quiz.mode === "potodds") {
+      const heroEq = enumRes.players[0].equity;
+      const offset = Math.random() * 0.30 - 0.15;
+      const target = Math.max(0.10, Math.min(0.85, heroEq + offset));
+      bet = (Math.floor(Math.random() * 10) + 1) * 5;
+      pot = Math.max(10, Math.round((bet * (1 - target) / target) / 5) * 5);
+    }
+
+    quiz.scenario = {
+      players, board, nPlayers, pot, bet,
+      equities: enumRes.players.map((p) => p.equity),
+    };
+
+    if (quiz.mode === "ahead") renderAheadQuiz();
+    else renderPotOddsQuiz();
+  } catch (_) {
+    body.innerHTML = '<div class="quiz-loading">Server unreachable.</div>';
+  }
+}
+
+function renderAheadQuiz() {
+  const s = quiz.scenario;
+  const body = $("qbody");
+  body.innerHTML = "";
+
+  const street = document.createElement("div");
+  street.className = "quiz-street";
+  street.textContent = streetName(s.board.length);
+  body.appendChild(street);
+
+  if (s.board.length > 0) {
+    const bw = document.createElement("div");
+    bw.className = "quiz-board";
+    for (const c of s.board) bw.appendChild(quizCard(c));
+    body.appendChild(bw);
+  }
+
+  const prompt = document.createElement("div");
+  prompt.className = "quiz-prompt";
+  prompt.textContent = "Which player has the highest equity?";
+  body.appendChild(prompt);
+
+  const hands = document.createElement("div");
+  hands.className = "quiz-hands";
+  for (let i = 0; i < s.nPlayers; i++) {
+    const hand = document.createElement("div");
+    hand.className = "quiz-hand clickable";
+
+    const label = document.createElement("div");
+    label.className = "quiz-hand-label";
+    label.textContent = "Player " + (i + 1);
+    hand.appendChild(label);
+
+    const cards = document.createElement("div");
+    cards.className = "quiz-hand-cards";
+    cards.appendChild(quizCard(s.players[i][0]));
+    cards.appendChild(quizCard(s.players[i][1]));
+    hand.appendChild(cards);
+
+    const idx = i;
+    hand.addEventListener("click", () => answerAhead(idx));
+    hands.appendChild(hand);
+  }
+  body.appendChild(hands);
+}
+
+function answerAhead(chosen) {
+  if (quiz.answered) return;
+  quiz.answered = true;
+  quiz.total++;
+
+  const s = quiz.scenario;
+  let bestEq = -1;
+  for (let i = 0; i < s.nPlayers; i++) {
+    if (s.equities[i] > bestEq) bestEq = s.equities[i];
+  }
+  const isLeader = (i) => Math.abs(s.equities[i] - bestEq) < 0.001;
+  const correct = isLeader(chosen);
+  if (correct) quiz.correct++;
+  renderQuizScore();
+
+  const hands = document.querySelectorAll(".quiz-hand");
+  hands.forEach((hand, i) => {
+    hand.classList.remove("clickable");
+    hand.classList.add("answered");
+    if (isLeader(i)) hand.classList.add("leader");
+    if (i === chosen && !correct) hand.classList.add("wrong");
+
+    const eq = document.createElement("div");
+    eq.className = "quiz-hand-equity";
+    eq.textContent = pct(s.equities[i]) + "% equity";
+    hand.appendChild(eq);
+  });
+
+  const result = document.createElement("div");
+  result.className = "quiz-result " + (correct ? "correct" : "wrong");
+
+  const next = document.createElement("button");
+  next.className = "quiz-next-btn";
+  next.textContent = "Next";
+  next.addEventListener("click", generateQuiz);
+
+  const verdict = document.createElement("div");
+  verdict.className = "quiz-verdict";
+  verdict.textContent = correct ? "Correct!" : "Wrong!";
+
+  result.appendChild(verdict);
+  result.appendChild(next);
+  $("qbody").appendChild(result);
+}
+
+function renderPotOddsQuiz() {
+  const s = quiz.scenario;
+  const body = $("qbody");
+  body.innerHTML = "";
+
+  const street = document.createElement("div");
+  street.className = "quiz-street";
+  street.textContent = streetName(s.board.length);
+  body.appendChild(street);
+
+  if (s.board.length > 0) {
+    const bw = document.createElement("div");
+    bw.className = "quiz-board";
+    for (const c of s.board) bw.appendChild(quizCard(c));
+    body.appendChild(bw);
+  }
+
+  const hands = document.createElement("div");
+  hands.className = "quiz-hands";
+  for (let i = 0; i < 2; i++) {
+    const hand = document.createElement("div");
+    hand.className = "quiz-hand";
+
+    const label = document.createElement("div");
+    label.className = "quiz-hand-label";
+    label.textContent = i === 0 ? "You" : "Opponent";
+    hand.appendChild(label);
+
+    const cards = document.createElement("div");
+    cards.className = "quiz-hand-cards";
+    cards.appendChild(quizCard(s.players[i][0]));
+    cards.appendChild(quizCard(s.players[i][1]));
+    hand.appendChild(cards);
+
+    hands.appendChild(hand);
+  }
+  body.appendChild(hands);
+
+  const potOdds = s.bet / (s.pot + s.bet);
+  const info = document.createElement("div");
+  info.className = "quiz-pot-info";
+  info.innerHTML =
+    '<div class="quiz-pot-row"><span>Pot</span><b>$' + s.pot + "</b></div>" +
+    '<div class="quiz-pot-row"><span>Bet to call</span><b>$' + s.bet + "</b></div>" +
+    '<div class="quiz-pot-row"><span>Pot odds</span><b>' + pct(potOdds) + "%</b></div>";
+  body.appendChild(info);
+
+  const prompt = document.createElement("div");
+  prompt.className = "quiz-prompt";
+  prompt.textContent = "Do you have enough equity to call?";
+  body.appendChild(prompt);
+
+  const actions = document.createElement("div");
+  actions.className = "quiz-actions";
+
+  const callBtn = document.createElement("button");
+  callBtn.className = "quiz-call-btn";
+  callBtn.textContent = "Call";
+  callBtn.addEventListener("click", () => answerPotOdds(true));
+
+  const foldBtn = document.createElement("button");
+  foldBtn.className = "quiz-fold-btn";
+  foldBtn.textContent = "Fold";
+  foldBtn.addEventListener("click", () => answerPotOdds(false));
+
+  actions.append(callBtn, foldBtn);
+  body.appendChild(actions);
+}
+
+function answerPotOdds(called) {
+  if (quiz.answered) return;
+  quiz.answered = true;
+  quiz.total++;
+
+  const s = quiz.scenario;
+  const heroEq = s.equities[0];
+  const potOdds = s.bet / (s.pot + s.bet);
+  const shouldCall = heroEq >= potOdds;
+  const correct = called === shouldCall;
+  if (correct) quiz.correct++;
+  renderQuizScore();
+
+  const actions = document.querySelector(".quiz-actions");
+  if (actions) actions.remove();
+
+  const result = document.createElement("div");
+  result.className = "quiz-result " + (correct ? "correct" : "wrong");
+
+  const verdict = document.createElement("div");
+  verdict.className = "quiz-verdict";
+  verdict.textContent = correct ? "Correct!" : "Wrong!";
+  result.appendChild(verdict);
+
+  const diff = heroEq - potOdds;
+  const sign = diff >= 0 ? "+" : "";
+  const expl = document.createElement("div");
+  expl.className = "quiz-explanation";
+  expl.innerHTML =
+    "Your equity: <b>" + pct(heroEq) + "%</b> | Pot odds: <b>" + pct(potOdds) + "%</b><br>" +
+    "Equity " + (shouldCall ? "&gt;" : "&lt;") + " Pot odds — " +
+    (shouldCall ? "Calling is +EV" : "Folding is correct") +
+    " (" + sign + pct(diff) + " pts)";
+  result.appendChild(expl);
+
+  const next = document.createElement("button");
+  next.className = "quiz-next-btn";
+  next.textContent = "Next";
+  next.addEventListener("click", generateQuiz);
+  result.appendChild(next);
+
+  $("qbody").appendChild(result);
+}
+
+function wireQuiz() {
+  $("quizbtn").addEventListener("click", startQuiz);
+  $("qclose").addEventListener("click", closeQuiz);
+  document.querySelectorAll(".quiz-tab").forEach((t) => {
+    t.addEventListener("click", () => setQuizMode(t.dataset.mode));
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && quiz.active) closeQuiz();
+  });
+}
+
 wire();
+wireQuiz();
 render();
 renderStatus();
