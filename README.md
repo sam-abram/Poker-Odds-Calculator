@@ -2,6 +2,8 @@
 
 Texas Hold'em equity calculator with a local web UI. Computes exact and Monte Carlo equity for 2–9 players at any street.
 
+![screenshot](screenshot.png)
+
 ## Features
 
 - **Exact enumeration** over all possible board completions
