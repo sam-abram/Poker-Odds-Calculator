@@ -8,3 +8,6 @@
 *.ilk
 *.exp
 *.lib
+
+# Claude Code
+.claude/
